@@ -1,0 +1,151 @@
+import pandas as pd
+import numpy as np
+from datetime import datetime
+
+# File path
+file_path = r"C:\Users\hp\Downloads\Data-&-Problem-Statement---Project----2\Credit card transactions - Project - 2.csv"
+
+# Load the data
+df = pd.read_csv(file_path)
+
+# Rename columns to remove spaces and make them lowercase
+df.columns = ['index', 'city', 'date', 'card_type', 'exp_type', 'gender', 'amount']
+
+# Convert date to datetime
+df['date'] = pd.to_datetime(df['date'])
+
+# Ensure amount is numeric
+df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
+
+# Display the first few rows and data info
+print(df.head())
+print(df.info())
+
+# Group by city and calculate total spend
+city_totals = df.groupby('city')['amount'].sum().sort_values(ascending=False)
+
+# Calculate percentage contribution
+total_spend = df['amount'].sum()
+city_percentages = (city_totals / total_spend) * 100
+
+# Combine and display top 5
+top_5_cities = pd.concat([city_totals, city_percentages], axis=1)
+top_5_cities.columns = ['Total Spend', 'Percentage Contribution']
+print(top_5_cities.head())
+
+# Extract year and month from date
+df['year'] = df['date'].dt.year
+df['month'] = df['date'].dt.month
+
+# Group by card type, year, and month
+monthly_totals = df.groupby(['card_type', 'year', 'month'])['amount'].sum().reset_index()
+
+# Find the highest spend month for each card type
+highest_spend = monthly_totals.loc[monthly_totals.groupby('card_type')['amount'].idxmax()]
+print(highest_spend)
+
+# Sort the dataframe
+df_sorted = df.sort_values(['card_type', 'date', 'amount'])
+
+# Calculate cumulative sum for each card type
+df_sorted['cumulative_spend'] = df_sorted.groupby('card_type')['amount'].cumsum()
+
+# Find the first transaction that crosses 1,000,000 for each card type
+threshold_transactions = df_sorted.groupby('card_type').apply(
+    lambda x: x[x['cumulative_spend'] >= 1000000].iloc[0]
+).reset_index(drop=True)
+
+print(threshold_transactions)
+
+# Calculate total spend per city
+total_spend = df.groupby('city')['amount'].sum()
+
+# Calculate gold card spend per city
+gold_spend = df[df['card_type'] == 'Gold'].groupby('city')['amount'].sum()
+
+# Calculate percentage of gold spend
+gold_percentage = (gold_spend / total_spend) * 100
+
+# Find city with lowest gold spend percentage
+lowest_gold_city = gold_percentage.idxmin()
+print(f"City with lowest gold card spend percentage: {lowest_gold_city}")
+print(f"Percentage: {gold_percentage[lowest_gold_city]:.2f}%")
+
+# Group by city and expense type
+city_exp_totals = df.groupby(['city', 'exp_type'])['amount'].sum().reset_index()
+
+# Find highest and lowest expense types
+highest_exp = city_exp_totals.loc[city_exp_totals.groupby('city')['amount'].idxmax()]
+lowest_exp = city_exp_totals.loc[city_exp_totals.groupby('city')['amount'].idxmin()]
+
+# Combine results
+result = pd.merge(highest_exp, lowest_exp, on='city', suffixes=('_highest', '_lowest'))
+result = result[['city', 'exp_type_highest', 'exp_type_lowest']]
+print(result)
+
+# Calculate total spend by expense type
+total_spend = df.groupby('exp_type')['amount'].sum()
+
+# Calculate female spend by expense type
+female_spend = df[df['gender'] == 'F'].groupby('exp_type')['amount'].sum()
+
+# Calculate percentage
+female_percentage = (female_spend / total_spend) * 100
+
+# Combine results
+result = pd.concat([female_spend, total_spend, female_percentage], axis=1)
+result.columns = ['Female Spend', 'Total Spend', 'Female Percentage']
+print(result.sort_values('Female Percentage', ascending=False))
+
+# Filter data for Dec 2013 and Jan 2014
+df_filtered = df[(df['date'].dt.year == 2013) & (df['date'].dt.month == 12) | 
+                 (df['date'].dt.year == 2014) & (df['date'].dt.month == 1)]
+
+# Group by card type, expense type, and month
+monthly_totals = df_filtered.groupby(['card_type', 'exp_type', df_filtered['date'].dt.to_period('M')])['amount'].sum().unstack()
+
+# Calculate growth rate
+growth_rate = (monthly_totals['2014-01'] - monthly_totals['2013-12']) / monthly_totals['2013-12']
+
+# Find highest growth rate
+highest_growth = growth_rate.idxmax()
+print(f"Highest growth: {highest_growth}, Growth rate: {growth_rate.max():.2%}")
+
+# Filter for weekend transactions (assuming 5 and 6 are Saturday and Sunday)
+weekend_df = df[df['date'].dt.dayofweek.isin([5, 6])]
+
+# Calculate total spend and transactions per city
+city_totals = weekend_df.groupby('city').agg({
+    'amount': 'sum',
+    'date': 'count'
+})
+
+# Calculate ratio
+city_totals['ratio'] = city_totals['amount'] / city_totals['date']
+
+# Find city with highest ratio
+highest_ratio_city = city_totals['ratio'].idxmax()
+print(f"City with highest weekend spend ratio: {highest_ratio_city}")
+print(f"Ratio: {city_totals.loc[highest_ratio_city, 'ratio']:.2f}")
+
+# Sort transactions by city and date
+df_sorted = df.sort_values(['city', 'date'])
+
+# Rank transactions within each city
+df_sorted['transaction_rank'] = df_sorted.groupby('city').cumcount() + 1
+
+# Find 1st and 500th transaction dates for each city
+city_dates = df_sorted.groupby('city').agg({
+    'date': ['first', lambda x: x.iloc[499] if len(x) > 499 else pd.NaT]
+})
+
+# Rename the lambda column for clarity
+city_dates.columns = ['first_transaction', '500th_transaction']
+
+# Calculate days to reach 500th transaction
+city_dates['days_to_500'] = (city_dates['500th_transaction'] - city_dates['first_transaction']).dt.days
+
+# Find city with least days
+fastest_city = city_dates['days_to_500'].idxmin()
+print(f"City reaching 500 transactions fastest: {fastest_city}")
+print(f"Days taken: {city_dates.loc[fastest_city, 'days_to_500']}")
